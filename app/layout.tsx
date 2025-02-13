@@ -1,8 +1,8 @@
 import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
-import Navbar from "@/components/Navbar"
-import Footer from "@/components/Footer"
+import { Toaster } from "@/components/ui/toaster"
+import RootLayoutClient from "@/components/RootLayoutClient"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -19,9 +19,8 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.className} flex flex-col min-h-screen bg-white overflow-x-hidden`}>
-        <Navbar />
-        <main className="flex-grow">{children}</main>
-        <Footer />
+        <RootLayoutClient>{children}</RootLayoutClient>
+        <Toaster />
       </body>
     </html>
   )
