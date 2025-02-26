@@ -1,11 +1,23 @@
-interface DashboardLayoutProps {
-  children: React.ReactNode
-}
+import { getUser } from "@/lib/supabase"
+import { AppSidebar } from "@/components/app-sidebar"
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/ui/sidebar"
 
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const user = await getUser()
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {children}
-    </div>
+    <SidebarProvider>
+      <AppSidebar user={user} />
+      <SidebarInset>
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
   )
 } 

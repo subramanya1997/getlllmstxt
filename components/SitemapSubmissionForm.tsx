@@ -23,9 +23,9 @@ export default function SitemapSubmissionForm() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             required
-            className="flex-grow bg-white border-gray-200"
+            className="flex-grow bg-white border-gray-200 h-12 text-base sm:max-w-md md:max-w-lg"
           />
-          <Button type="submit" className="w-full sm:w-auto bg-[#E76F51] hover:bg-[#D65F41] text-white px-8">
+          <Button type="submit" className="w-full sm:w-auto bg-[#E76F51] hover:bg-[#D65F41] text-white px-8 h-12">
             Start for free
           </Button>
         </div>

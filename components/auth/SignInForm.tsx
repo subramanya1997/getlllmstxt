@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createBrowserClient } from "@supabase/ssr"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -33,7 +33,10 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
   const [showVerification, setShowVerification] = useState(false)
   const [email, setEmail] = useState("")
   const router = useRouter()
-  const supabase = createClientComponentClient()
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
   const emailForm = useForm<z.infer<typeof emailFormSchema>>({
@@ -93,6 +96,34 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
     if (numbersOnly && nextInput) {
       nextInput.focus()
       nextInput.select()
+    }
+  }
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>, index: number) => {
+    event.preventDefault()
+    const pastedData = event.clipboardData.getData("text/plain").replace(/[^0-9]/g, "")
+    
+    if (!pastedData) return
+    
+    // Update the form values with the pasted digits
+    const updatedCode = [...codeForm.getValues().code]
+    
+    // Fill in as many inputs as we can with the pasted value
+    for (let i = 0; i < Math.min(pastedData.length, 6 - index); i++) {
+      if (inputRefs.current[index + i]) {
+        inputRefs.current[index + i]!.value = pastedData[i]
+        updatedCode[index + i] = pastedData[i]
+      }
+    }
+    
+    codeForm.setValue("code", updatedCode)
+    
+    // Focus the next empty input or the last input if all filled
+    const nextEmptyIndex = updatedCode.findIndex((digit, i) => i >= index && !digit)
+    if (nextEmptyIndex !== -1 && inputRefs.current[nextEmptyIndex]) {
+      inputRefs.current[nextEmptyIndex]!.focus()
+    } else if (inputRefs.current[5]) {
+      inputRefs.current[5]!.focus()
     }
   }
 
@@ -262,6 +293,7 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
                             disabled={isLoading}
                             onKeyDown={(e) => onKeyDown(e, i)}
                             onInput={(e) => onInput(e, i)}
+                            onPaste={(e) => handlePaste(e, i)}
                             />
                         </FormControl>
                         </FormItem>
