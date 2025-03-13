@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import Logo from "@/components/Logo"
 import { usePathname } from "next/navigation"
+import { useUser } from "@/lib/user-provider"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -57,17 +58,27 @@ const navItems = [
 ]
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  user: {
+  user?: {
     name: string
     email: string
     avatar: string
   }
 }
 
-export function AppSidebar({ user, ...props }: AppSidebarProps) {
+export function AppSidebar({ user: propUser, ...props }: AppSidebarProps) {
   // Use client-side only rendering to avoid hydration mismatches
   const [mounted, setMounted] = React.useState(false)
   const pathname = usePathname()
+  const { session } = useUser()
+  
+  // Create a default user object if none is provided
+  const user = propUser || {
+    name: session?.user?.email?.split("@")[0] || "User",
+    email: session?.user?.email || "",
+    avatar: session?.user?.email ? 
+      `https://api.dicebear.com/7.x/initials/svg?seed=${session.user.email}` : 
+      "https://api.dicebear.com/7.x/initials/svg?seed=User",
+  }
 
   React.useEffect(() => {
     setMounted(true)
@@ -77,13 +88,22 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
   // to avoid hydration mismatch during the first render
   if (!mounted) {
     return (
-      <Sidebar collapsible="icon" {...props}>
+      <Sidebar 
+        collapsible="none" 
+        className="h-screen flex flex-col" 
+        style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}
+        {...props}
+      >
         <SidebarHeader>
           <div className="flex items-center justify-center p-2">
             <Logo />
           </div>
         </SidebarHeader>
-        <SidebarContent suppressHydrationWarning>
+        <SidebarContent 
+          suppressHydrationWarning 
+          className="flex-grow overflow-y-auto"
+          style={{ flex: '1 1 auto', overflow: 'auto' }}
+        >
           <NavMain
             items={navItems.map(item => ({
               ...item,
@@ -91,7 +111,10 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
             }))}
           />
         </SidebarContent>
-        <SidebarFooter>
+        <SidebarFooter 
+          className="mt-auto"
+          style={{ marginTop: 'auto' }}
+        >
           <NavUser user={user} />
         </SidebarFooter>
         <SidebarRail />
@@ -108,16 +131,27 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
   }))
 
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar 
+      collapsible="none" 
+      className="h-screen flex flex-col" 
+      style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}
+      {...props}
+    >
       <SidebarHeader>
         <div className="flex items-center justify-center p-2">
           <Logo />
         </div>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent 
+        className="flex-grow overflow-y-auto"
+        style={{ flex: '1 1 auto', overflow: 'auto' }}
+      >
         <NavMain items={navItemsWithActive} />
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter 
+        className="mt-auto"
+        style={{ marginTop: 'auto' }}
+      >
         <NavUser user={user} />
       </SidebarFooter>
       <SidebarRail />

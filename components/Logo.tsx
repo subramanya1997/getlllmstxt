@@ -20,7 +20,7 @@ export default function Logo() {
   const redirectUrl = isDashboard ? '/dashboard' : '/'
   
   return (
-    <div className={`text-2xl font-bold ${kronaOne.className}`}>
+    <div className={`text-xl font-bold ${kronaOne.className}`}>
       <Link 
         href={redirectUrl}
         className="flex items-center cursor-pointer"

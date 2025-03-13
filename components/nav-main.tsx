@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { type LucideIcon } from "lucide-react"
 
 import {
@@ -33,15 +34,18 @@ export function NavMain({
               asChild 
               className={`flex items-center gap-x-3 px-3 py-2 rounded-md ${item.isActive ? "bg-orange-50 text-orange-600" : "hover:bg-slate-100"}`}
             >
-              <a href={item.url}>
+              <Link 
+                href={item.url} 
+                className="flex items-center w-full"
+              >
                 <item.icon className={item.isActive ? "text-orange-600" : "text-slate-600"} />
-                <span className="flex-1">{item.title}</span>
+                <span className="flex-1 ml-3">{item.title}</span>
                 {item.isNew && (
                   <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-600">
                     New
                   </span>
                 )}
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         ))}

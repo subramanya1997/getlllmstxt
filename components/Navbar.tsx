@@ -4,18 +4,15 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import Logo from "@/components/Logo"
-import { createBrowserClient } from "@supabase/ssr"
 import { useEffect, useState } from "react"
 import { toast } from "@/hooks/use-toast"
+import { supabaseClient } from "@/lib/supabase-client"
 
 export default function Navbar() {
   const [isLoading, setIsLoading] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const router = useRouter()
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseClient
 
   useEffect(() => {
     const checkUser = async () => {
@@ -65,9 +62,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center gap-8">
-            <Link href="/" className="hover:opacity-90">
-              <Logo />
-            </Link>
+            <Logo />
           </div>
           <div className="flex items-center gap-4">
             {isAuthenticated ? (

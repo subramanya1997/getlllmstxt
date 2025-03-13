@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "dev": "deno run --allow-net --allow-env --allow-read ./supabase/functions/parse-sitemap/index.ts"
+  },
+  "imports": {
+    "http/server": "https://deno.land/std@0.168.0/http/server.ts",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "xml": "https://deno.land/x/xml@2.1.1/mod.ts"
+  }
+} 

@@ -30,7 +30,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { signOut } from "@/lib/supabase-client"
+import { supabaseClient } from "@/lib/supabase-client"
 import { toast } from "@/hooks/use-toast"
 
 // Define resource item type
@@ -77,7 +77,9 @@ export function NavUser({
 
   const handleSignOut = async () => {
     try {
-      await signOut()
+      const { error } = await supabaseClient.auth.signOut()
+      if (error) throw error
+      
       router.push("/login")
       router.refresh()
     } catch {
@@ -121,7 +123,7 @@ export function NavUser({
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "right"}
+            side={isMobile ? "bottom" : "top"}
             align="end"
             sideOffset={4}
           >
