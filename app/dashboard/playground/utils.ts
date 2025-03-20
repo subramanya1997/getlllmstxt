@@ -1,4 +1,6 @@
 import { supabaseClient } from "@/lib/supabase-client";
+import { createClient } from '@supabase/supabase-js';
+
 
 // Use the pre-initialized Supabase client
 const supabase = supabaseClient;
@@ -113,6 +115,66 @@ export const storeInSupabase = async (
   } catch (error) {
     console.error("Error storing in Supabase:", error);
     return 0;
+  }
+};
+
+// Function to call the parse-sitemap Supabase function
+export const callParseSitemapFunction = async (
+  sitemapUrl: string,
+  userId: string,
+  accessToken?: string
+): Promise<{ jobId: string | null; error: string | null }> => {
+  try {
+    // Extract domain from sitemap URL
+    let domain = "";
+    try {
+      const urlObj = new URL(sitemapUrl);
+      domain = urlObj.hostname;
+    } catch (e) {
+      console.error("Invalid sitemap URL:", sitemapUrl, e);
+      return { jobId: null, error: "Invalid sitemap URL" };
+    }
+
+    // Call the Supabase Function
+    const apiUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('.supabase.co', '.functions.supabase.co') || '';
+    const response = await fetch(`${apiUrl}/functions/v1/parse-sitemap`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {})
+      },
+      body: JSON.stringify({
+        sitemapUrl,
+        userId,
+        domain,
+        recursive: true,
+        maxDepth: 5
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Parse sitemap API error: ${response.status} - ${errorText}`);
+      return { 
+        jobId: null, 
+        error: `API Error (${response.status}): ${errorText.substring(0, 100)}` 
+      };
+    }
+
+    const data = await response.json();
+    console.log('Parse sitemap function response:', data);
+    
+    // The API returns jobId directly in the response
+    return { 
+      jobId: data.jobId || null, 
+      error: null 
+    };
+  } catch (error) {
+    console.error('Error calling parse-sitemap function:', error);
+    return { 
+      jobId: null, 
+      error: error instanceof Error ? error.message : String(error) 
+    };
   }
 };
 

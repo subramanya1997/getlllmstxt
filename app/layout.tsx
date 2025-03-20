@@ -1,7 +1,7 @@
 import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
-import { Toaster } from "@/components/ui/toaster"
+import { Toaster } from "@/components/ui/sonner"
 import RootLayoutClient from "@/components/RootLayoutClient"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -20,7 +20,7 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <body className={`${inter.className} flex flex-col min-h-screen bg-white overflow-x-hidden`}>
         <RootLayoutClient>{children}</RootLayoutClient>
-        <Toaster />
+        <Toaster position="top-right" />
       </body>
     </html>
   )

@@ -7,7 +7,7 @@ import { JobsTable } from "./components/JobsTable"
 import { SitemapsTable } from "./components/SitemapsTable"
 import { UrlsList } from "./components/UrlsList"
 import { useUserJobs, useUserSitemaps, useAutoRefresh, useSitemapUrls } from "./hooks"
-import { parseLocalSitemap, storeInSupabase } from "./utils"
+import { parseLocalSitemap, storeInSupabase, callParseSitemapFunction } from "./utils"
 import { Sitemap, SitemapJob, StorageStatus } from "./types"
 import { supabaseClient } from "@/lib/supabase-client"
 import { useUser } from "@/lib/user-provider"
@@ -137,33 +137,17 @@ export default function PlaygroundPage() {
       let storedCount = 0;
       const accessToken = session?.access_token;
       
-      // Try to use Edge Function if we have an access token, user ID, and Supabase URL
-      if (accessToken && userId && process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      // Try to use our enhanced parse-sitemap function if we have an access token and user ID
+      if (accessToken && userId) {
         try {
-          console.log("Calling Edge Function to parse sitemap");
+          console.log("Calling enhanced parse-sitemap function");
           
-          // Call the Edge Function to parse the sitemap
-          const edgeFunctionUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/parse-sitemap`;
-          console.log(`Using edge function URL: ${edgeFunctionUrl}`);
+          // Call our enhanced parse-sitemap function with recursive capabilities
+          const { jobId, error } = await callParseSitemapFunction(sitemapUrl, userId, accessToken);
           
-          const response = await fetch(edgeFunctionUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ 
-              sitemapUrl,
-              userId 
-            }),
-          });
-          
-          const data = await response.json();
-          console.log("Edge function response:", data);
-          
-          if (!response.ok) {
+          if (error) {
             // Check if this is a duplicate sitemap error
-            if (data.error && data.error.includes("duplicate key value") && data.error.includes("sitemaps_url_key")) {
+            if (error.includes("duplicate key value") && error.includes("sitemaps_url_key")) {
               // This is a duplicate sitemap, show a more friendly message
               toast({
                 title: "Sitemap Already Exists",
@@ -173,19 +157,19 @@ export default function PlaygroundPage() {
               // We still continue with the flow, the backend should handle the duplicate
             } else {
               // This is some other error
-              console.warn("Edge function error, falling back to local parsing:", data);
-              throw new Error(data.error || `Server responded with status: ${response.status}`);
+              console.warn("Parse sitemap function error, falling back to local parsing:", error);
+              throw new Error(error);
             }
           }
           
           // If the job was created successfully
-          if (data.success && data.job_id) {
-            setProcessingJobId(data.job_id);
+          if (jobId) {
+            setProcessingJobId(jobId);
             setStorageStatus("partial"); // Mark as partial since processing started
             
             toast({
               title: "Processing started",
-              description: `Sitemap processing has begun. Found ${data.total_urls || 0} URLs to process.`,
+              description: `Sitemap processing has begun. The enhanced parser will recursively process all nested sitemaps up to 5 levels deep.`,
             });
             
             // Fetch initial URLs for display (this part is optional)
@@ -201,8 +185,8 @@ export default function PlaygroundPage() {
             } else {
               // If no URLs are available yet, show a message
               toast({
-                title: "Processing in background",
-                description: "URLs are being processed in the background. Check back later for results.",
+                title: "Intelligent processing in background",
+                description: "URLs are being processed in the background. Our enhanced parser can detect non-standard XML content and various sitemap formats.",
               });
             }
             

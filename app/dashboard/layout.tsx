@@ -12,9 +12,9 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
+    <SidebarProvider defaultOpen={true} className="h-screen overflow-hidden">
+      <AppSidebar variant="floating" />
+      <SidebarInset className="overflow-auto">
         {children}
       </SidebarInset>
     </SidebarProvider>
