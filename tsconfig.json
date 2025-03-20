@@ -31,6 +31,8 @@
     "strictNullChecks": true
   },
   "include": [
+    "**/*.ts",
+    "**/*.tsx",
     "supabase/**/*.ts",
     ".next/types/**/*.ts"
   ],

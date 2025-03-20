@@ -3,9 +3,7 @@
 import * as React from "react"
 import {
   ListTree,
-  ChartSpline,
   Home,
-  Key,
   LayoutDashboard,
   Settings,
 } from "lucide-react"
@@ -40,16 +38,16 @@ const navItems = [
     url: "/dashboard/activity-logs",
     icon: ListTree,
   },
-  {
-    title: "Usage",
-    url: "/dashboard/usage",
-    icon: ChartSpline,
-  },
-  {
-    title: "API Keys",
-    url: "/dashboard/api-keys",
-    icon: Key,
-  },
+  // {
+  //   title: "Usage",
+  //   url: "/dashboard/usage",
+  //   icon: ChartSpline,
+  // },
+  // {
+  //   title: "API Keys",
+  //   url: "/dashboard/api-keys",
+  //   icon: Key,
+  // },
   {
     title: "Settings",
     url: "/dashboard/settings",

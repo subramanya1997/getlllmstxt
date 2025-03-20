@@ -1,5 +1,4 @@
 import { supabaseClient } from "@/lib/supabase-client";
-import { createClient } from '@supabase/supabase-js';
 
 
 // Use the pre-initialized Supabase client
