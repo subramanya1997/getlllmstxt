@@ -10,24 +10,47 @@ import {
   updateUrlStatus
 } from "./db-operations";
 
+// Default and maximum recursion depth
+const DEFAULT_MAX_DEPTH = 10;
+
 /**
  * Process a sitemap recursively and extract all URLs
  * @param sitemapUrl The sitemap URL to process
  * @param domain The domain of the sitemap
  * @param processedSitemaps Set of already processed sitemap URLs
  * @param depth Current recursion depth
+ * @param maxDepth Maximum recursion depth (default: 10)
  * @returns Array of all extracted URLs
  */
 export async function processSitemapRecursively(
   sitemapUrl: string, 
   domain: string,
   processedSitemaps: Set<string> = new Set<string>(),
-  depth: number = 0
+  depth: number = 0,
+  maxDepth: number = DEFAULT_MAX_DEPTH
 ): Promise<string[]> {
   // Safety checks
-  if (!sitemapUrl || typeof sitemapUrl !== 'string' || !sitemapUrl.startsWith('http')) {
+  if (!sitemapUrl || typeof sitemapUrl !== 'string') {
     console.error(`Invalid URL format in processSitemapRecursively: ${sitemapUrl}`);
     return [];
+  }
+  
+  try {
+    const normalizedUrl = new URL(sitemapUrl).toString();
+    sitemapUrl = normalizedUrl;
+  } catch (error) {
+    if (!sitemapUrl.startsWith('http')) {
+      sitemapUrl = 'https://' + sitemapUrl;
+      try {
+        new URL(sitemapUrl);
+      } catch (e) {
+        console.error(`Invalid URL format even after fixing: ${sitemapUrl}`);
+        return [];
+      }
+    } else {
+      console.error(`Invalid URL format: ${sitemapUrl}`);
+      return [];
+    }
   }
   
   // Prevent processing the same sitemap multiple times
@@ -37,12 +60,12 @@ export async function processSitemapRecursively(
   }
   
   // Prevent infinite recursion
-  if (depth > 5) {
-    console.log(`Maximum recursion depth reached for ${sitemapUrl}, stopping`);
+  if (depth > maxDepth) {
+    console.log(`Maximum recursion depth (${maxDepth}) reached for ${sitemapUrl}, stopping`);
     return [];
   }
   
-  console.log(`Processing sitemap at depth ${depth}: ${sitemapUrl}`);
+  console.log(`Processing sitemap at depth ${depth}/${maxDepth}: ${sitemapUrl}`);
   processedSitemaps.add(sitemapUrl);
   
   try {
@@ -55,15 +78,42 @@ export async function processSitemapRecursively(
       
       // Collect all URLs from nested sitemaps
       const allNestedUrls: string[] = [];
+      const errors: Error[] = [];
       
-      for (const nestedSitemapUrl of result.urls) {
-        const nestedUrls = await processSitemapRecursively(
-          nestedSitemapUrl,
-          domain,
-          processedSitemaps,
-          depth + 1
+      // Process nested sitemaps in parallel with concurrency limit
+      const concurrencyLimit = 5; // Process up to 5 sitemaps at once
+      const nestedSitemaps = [...result.urls]; // Copy to avoid modifying the original
+      
+      while (nestedSitemaps.length > 0) {
+        // Take a batch of sitemaps to process
+        const batch = nestedSitemaps.splice(0, concurrencyLimit);
+        
+        // Process the batch in parallel
+        const batchResults = await Promise.allSettled(
+          batch.map(nestedSitemapUrl => 
+            processSitemapRecursively(
+              nestedSitemapUrl,
+              domain,
+              processedSitemaps,
+              depth + 1,
+              maxDepth
+            )
+          )
         );
-        allNestedUrls.push(...nestedUrls);
+        
+        // Collect results and errors
+        batchResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            allNestedUrls.push(...result.value);
+          } else {
+            console.error(`Error processing nested sitemap ${batch[index]}:`, result.reason);
+            errors.push(result.reason);
+          }
+        });
+      }
+      
+      if (errors.length > 0) {
+        console.warn(`Encountered ${errors.length} errors while processing nested sitemaps`);
       }
       
       return allNestedUrls;
@@ -104,87 +154,96 @@ export async function processSitemapInBackground(
     // Update sitemap status to processing
     await updateSitemapStatus(supabase, sitemapUrl, 'processing');
     
-    // Process each URL
-    const urlEntries: SitemapUrl[] = [];
+    // Process URLs in batches
+    const BATCH_SIZE = 50; // Increased from 25 for better performance
+    const totalUrls = extractedUrls.length;
     let processedCount = 0;
+    let successCount = 0;
+    let failureCount = 0;
     
-    for (const url of extractedUrls) {
-      try {
-        // First create an entry with 'processing' status
+    // Process in batches to avoid memory issues with large sitemaps
+    for (let i = 0; i < totalUrls; i += BATCH_SIZE) {
+      const urlBatch = extractedUrls.slice(i, i + BATCH_SIZE);
+      const urlEntries: SitemapUrl[] = [];
+      
+      // First create entries with 'processing' status for all URLs in this batch
+      for (const url of urlBatch) {
         urlEntries.push({
           url: url,
           domain: domain,
           sitemap_url: sitemapUrl,
-          potential_llms_txt: null, // Will be updated later
-          title: '', // Will be updated later - using empty string instead of null
-          description: '', // Will be updated later - using empty string instead of null
+          potential_llms_txt: null,
+          title: '',
+          description: '',
           user_id: userId,
-          status: 'processing', // Mark as processing
+          status: 'processing',
           created_at: new Date().toISOString(),
           is_latest: true
         });
-        
-        // Batch insert if needed to ensure URL is in database with 'processing' status
-        if (urlEntries.length >= 25) {
-          await batchInsertUrls(supabase, urlEntries);
-          urlEntries.length = 0; // Clear the array
-        }
-        
-        // Extract metadata from URL
-        const { title, description } = await extractPageMetadata(url);
-        
-        // Determine potential llms.txt url
-        let potentialLLMsTxt: string | null = null;
+      }
+      
+      // Insert all URLs in this batch with 'processing' status
+      try {
+        await batchInsertUrls(supabase, urlEntries);
+      } catch (batchError) {
+        console.error(`Error batch inserting URLs:`, batchError);
+      }
+      
+      // Process each URL in the batch to extract metadata
+      const metadataPromises = urlBatch.map(async (url, index) => {
         try {
-          const urlObj = new URL(url);
-          potentialLLMsTxt = `${urlObj.protocol}//${urlObj.hostname}/llms.txt`;
-        } catch (error) {
-          console.error(`Invalid URL format: ${url}`, error);
-        }
-
-        // If we haven't inserted the URL yet, include it in the next batch
-        if (urlEntries.length > 0 && urlEntries.some(entry => entry.url === url)) {
-          // Update the entry in the pending batch
-          const index = urlEntries.findIndex(entry => entry.url === url);
-          if (index !== -1) {
-            urlEntries[index].title = title;
-            urlEntries[index].description = description;
-            urlEntries[index].potential_llms_txt = potentialLLMsTxt;
-            urlEntries[index].status = 'completed'; // Mark as completed
+          // Extract metadata from URL
+          const { title, description } = await extractPageMetadata(url);
+          
+          // Determine potential llms.txt url
+          let potentialLLMsTxt: string | null = null;
+          try {
+            const urlObj = new URL(url);
+            potentialLLMsTxt = `${urlObj.protocol}//${urlObj.hostname}/llms.txt`;
+          } catch (error) {
+            console.error(`Invalid URL format: ${url}`, error);
           }
-        } else {
-          // URL was already inserted, update its status to completed
+          
+          // Update URL status to completed with metadata
           await updateUrlStatus(supabase, url, 'completed', {
             title,
             description,
             potential_llms_txt: potentialLLMsTxt
           });
+          
+          successCount++;
+          return { success: true, url };
+        } catch (urlError) {
+          console.error(`Error processing URL ${url}:`, urlError);
+          
+          // Mark as failed
+          try {
+            await updateUrlStatus(supabase, url, 'failed');
+          } catch (updateError) {
+            console.error(`Error updating URL status for ${url}:`, updateError);
+          }
+          
+          failureCount++;
+          return { success: false, url, error: urlError };
         }
-        
-        // Update progress every 10 items
-        processedCount++;
-        if (processedCount % 10 === 0 || processedCount === extractedUrls.length) {
-          await updateJobStatus(supabase, jobId, 'processing', processedCount);
-          console.log(`Processed ${processedCount}/${extractedUrls.length} URLs`);
-        }
-        
-        // Batch insert any remaining entries at the end
-        if (processedCount === extractedUrls.length && urlEntries.length > 0) {
-          await batchInsertUrls(supabase, urlEntries);
-          urlEntries.length = 0; // Clear the array
-        }
-      } catch (urlError) {
-        console.error(`Error processing URL ${url}:`, urlError);
-      }
+      });
+      
+      // Wait for all URLs in this batch to be processed
+      await Promise.allSettled(metadataPromises);
+      
+      // Update processed count and job status
+      processedCount += urlBatch.length;
+      await updateJobStatus(supabase, jobId, 'processing', processedCount);
+      console.log(`Processed ${processedCount}/${totalUrls} URLs (${successCount} success, ${failureCount} failed)`);
     }
     
     // Mark job as completed
-    await updateJobStatus(supabase, jobId, 'completed', extractedUrls.length);
+    await updateJobStatus(supabase, jobId, 'completed', processedCount);
     
     // Mark sitemap as completed
     await updateSitemapStatus(supabase, sitemapUrl, 'completed');
     
-    console.log(`Completed processing sitemap: ${sitemapUrl}`);
+    console.log(`Completed processing sitemap: ${sitemapUrl} (${successCount} success, ${failureCount} failed)`);
   } catch (error) {
     console.error(`Background processing error:`, error);
     
