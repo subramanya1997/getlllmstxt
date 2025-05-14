@@ -235,15 +235,21 @@ export async function batchInsertUrls(
     // Mark previous entries from this sitemap as not latest
     if (urlEntries.length > 0) {
       const sitemapUrl = urlEntries[0].sitemap_url;
-      await supabase
-        .from('sitemap_urls')
-        .update({ is_latest: false })
-        .eq('sitemap_url', sitemapUrl);
+      try {
+        await supabase
+          .from('sitemap_urls')
+          .update({ is_latest: false })
+          .eq('sitemap_url', sitemapUrl)
+          .eq('is_latest', true); // Only update records that are currently marked as latest
+      } catch (updateError) {
+        console.error(`Error updating previous entries for ${sitemapUrl}:`, updateError);
+      }
     }
     
-    // Batch insert the URLs in chunks to avoid hitting request limits
-    const BATCH_SIZE = 25;
+    const BATCH_SIZE = urlEntries.length > 1000 ? 100 : 50;
     let insertedCount = 0;
+    let failedBatches = 0;
+    const maxRetries = 3;
     
     for (let i = 0; i < urlEntries.length; i += BATCH_SIZE) {
       const batch = urlEntries.slice(i, i + BATCH_SIZE);
@@ -256,15 +262,60 @@ export async function batchInsertUrls(
         is_latest: entry.is_latest !== undefined ? entry.is_latest : true
       }));
       
-      const { error } = await supabase
-        .from('sitemap_urls')
-        .insert(processedBatch);
+      let retryCount = 0;
+      let success = false;
       
-      if (error) {
-        console.error(`Error inserting URL batch ${i}-${i+BATCH_SIZE}:`, error);
-      } else {
-        insertedCount += batch.length;
+      while (!success && retryCount < maxRetries) {
+        try {
+          const { error } = await supabase
+            .from('sitemap_urls')
+            .insert(processedBatch);
+          
+          if (error) {
+            // Check if this is a duplicate key error
+            if (error.message && error.message.includes("duplicate key value")) {
+              console.warn(`Duplicate key detected in batch ${i}-${i+BATCH_SIZE}, some URLs may already exist`);
+              success = true;
+              insertedCount += batch.length; // Approximate count, some may have failed
+            } else {
+              console.error(`Error inserting URL batch ${i}-${i+BATCH_SIZE} (attempt ${retryCount + 1}):`, error);
+              retryCount++;
+              
+              if (retryCount < maxRetries) {
+                const backoffMs = Math.pow(2, retryCount) * 1000;
+                console.log(`Retrying in ${backoffMs}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+              }
+            }
+          } else {
+            success = true;
+            insertedCount += batch.length;
+          }
+        } catch (insertError) {
+          console.error(`Exception inserting URL batch ${i}-${i+BATCH_SIZE} (attempt ${retryCount + 1}):`, insertError);
+          retryCount++;
+          
+          if (retryCount < maxRetries) {
+            const backoffMs = Math.pow(2, retryCount) * 1000;
+            console.log(`Retrying in ${backoffMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+          }
+        }
       }
+      
+      if (!success) {
+        failedBatches++;
+      }
+      
+      if (urlEntries.length > 500 && (i + BATCH_SIZE) % 500 === 0) {
+        console.log(`Processed ${i + BATCH_SIZE}/${urlEntries.length} URLs for database insertion`);
+      }
+    }
+    
+    if (failedBatches > 0) {
+      console.warn(`Completed batch insertion with ${failedBatches} failed batches out of ${Math.ceil(urlEntries.length / BATCH_SIZE)}`);
+    } else {
+      console.log(`Successfully inserted all ${insertedCount} URLs`);
     }
     
     return insertedCount;

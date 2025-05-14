@@ -2,7 +2,11 @@
 
 // @ts-ignore: Deno module
 import { parse as parseXML } from "https://deno.land/x/xml@2.1.1/mod.ts";
+// @ts-ignore: Deno module
+import { SAXParser } from "https://deno.land/x/xmlp@v0.3.0/mod.ts";
 import { SitemapProcessingResult } from "./types";
+
+const MAX_DOM_PARSE_SIZE = 5 * 1024 * 1024;
 
 /**
  * Extract URLs from an XML document
@@ -95,16 +99,84 @@ export function extractUrlsFromXml(doc: any): string[] {
  */
 export function extractUrlsWithRegex(xmlText: string): string[] {
   const urls: string[] = [];
-  const locRegex = /<loc[^>]*>(?:<\!\[CDATA\[\s*)?(.*?)(?:\s*\]\]>)?<\/loc>/gi;
-  let match;
   
+  const locRegex = /<(?:[\w\d]+:)?loc[^>]*>(?:<!\[CDATA\[\s*)?(.*?)(?:\s*\]\]>)?<\/(?:[\w\d]+:)?loc>/gi;
+  
+  let match;
   while ((match = locRegex.exec(xmlText)) !== null) {
     if (match[1] && match[1].trim()) {
-      urls.push(match[1].trim());
+      try {
+        const decodedUrl = decodeURIComponent(match[1].trim().replace(/&amp;/g, '&'));
+        urls.push(decodedUrl);
+      } catch (e) {
+        urls.push(match[1].trim());
+      }
     }
   }
   
   return urls;
+}
+
+/**
+ * Extract URLs from XML using a streaming SAX parser
+ * @param xmlText The XML text to parse
+ * @returns Promise with array of URLs found
+ */
+export async function extractUrlsWithSaxParser(xmlText: string): Promise<string[]> {
+  return new Promise((resolve) => {
+    const urls: string[] = [];
+    let currentElement = '';
+    let isLocElement = false;
+    let currentUrl = '';
+    
+    const parser = new SAXParser();
+    
+    parser.on('opentag', (tag) => {
+      currentElement = tag.name.toLowerCase();
+      // Handle both namespaced and non-namespaced loc elements
+      isLocElement = currentElement === 'loc' || currentElement.endsWith(':loc');
+      if (isLocElement) {
+        currentUrl = '';
+      }
+    });
+    
+    parser.on('text', (text) => {
+      if (isLocElement) {
+        currentUrl += text;
+      }
+    });
+    
+    parser.on('cdata', (text) => {
+      if (isLocElement) {
+        currentUrl += text;
+      }
+    });
+    
+    parser.on('closetag', (tagName) => {
+      const tag = tagName.toLowerCase();
+      if ((tag === 'loc' || tag.endsWith(':loc')) && currentUrl.trim()) {
+        try {
+          const decodedUrl = decodeURIComponent(currentUrl.trim().replace(/&amp;/g, '&'));
+          urls.push(decodedUrl);
+        } catch (e) {
+          urls.push(currentUrl.trim());
+        }
+      }
+      isLocElement = false;
+    });
+    
+    parser.on('end', () => {
+      resolve(urls);
+    });
+    
+    parser.on('error', (error) => {
+      console.error('SAX parser error:', error);
+      const regexUrls = extractUrlsWithRegex(xmlText);
+      resolve(regexUrls);
+    });
+    
+    parser.write(xmlText).close();
+  });
 }
 
 /**
@@ -135,8 +207,8 @@ export function isSitemapIndex(xmlDoc: any, xmlText: string, foundUrls: string[]
   
   // Check 2: Sitemap index markers in XML text
   if (xmlText) {
-    const hasSitemapIndexTag = xmlText.includes('<sitemapindex') || xmlText.includes('</sitemapindex');
-    const hasSitemapTags = xmlText.includes('<sitemap>') || xmlText.includes('</sitemap>');
+    const hasSitemapIndexTag = /(<[\w\d]*:?sitemapindex|<\/[\w\d]*:?sitemapindex)/i.test(xmlText);
+    const hasSitemapTags = /(<[\w\d]*:?sitemap>|<\/[\w\d]*:?sitemap>)/i.test(xmlText);
     
     if (hasSitemapIndexTag || hasSitemapTags) {
       console.log(`Detected sitemap index markers in XML`);
@@ -147,7 +219,9 @@ export function isSitemapIndex(xmlDoc: any, xmlText: string, foundUrls: string[]
   // Check 3: Heuristic - URLs that look like sitemaps
   if (foundUrls.length > 0) {
     const sitemapLikeUrlCount = foundUrls.filter(u => 
-      u.includes('sitemap') || u.endsWith('.xml')).length;
+      u.toLowerCase().includes('sitemap') || 
+      u.toLowerCase().endsWith('.xml') || 
+      u.toLowerCase().endsWith('.xml.gz')).length;
     
     // If most URLs look like sitemaps, treat as sitemap index
     if (sitemapLikeUrlCount > 0 && sitemapLikeUrlCount / foundUrls.length > 0.5) {
@@ -160,13 +234,15 @@ export function isSitemapIndex(xmlDoc: any, xmlText: string, foundUrls: string[]
       console.log(`Low URL count (${foundUrls.length}) suggests this might be a sitemap index`);
       
       // Check if URLs match typical sitemap patterns
-      const sitemapExtensions = ['.xml', '.xml.gz'];
-      const sitemapKeywords = ['sitemap', 'sitemap_', 'sitemap-'];
+      const sitemapExtensions = ['.xml', '.xml.gz', '.gz'];
+      const sitemapKeywords = ['sitemap', 'sitemap_', 'sitemap-', 'siteindex'];
       
       for (const url of foundUrls) {
+        const lowerUrl = url.toLowerCase();
+        
         // Check URL extensions
         for (const ext of sitemapExtensions) {
-          if (url.toLowerCase().endsWith(ext)) {
+          if (lowerUrl.endsWith(ext)) {
             console.log(`URL ${url} ends with ${ext}, treating as sitemap index`);
             return true;
           }
@@ -174,7 +250,7 @@ export function isSitemapIndex(xmlDoc: any, xmlText: string, foundUrls: string[]
         
         // Check for sitemap keywords in URL
         for (const keyword of sitemapKeywords) {
-          if (url.toLowerCase().includes(keyword)) {
+          if (lowerUrl.includes(keyword)) {
             console.log(`URL ${url} contains keyword ${keyword}, treating as sitemap index`);
             return true;
           }
@@ -184,9 +260,12 @@ export function isSitemapIndex(xmlDoc: any, xmlText: string, foundUrls: string[]
         try {
           const parsedUrl = new URL(url);
           const pathParts = parsedUrl.pathname.split('/');
-          const lastPathPart = pathParts[pathParts.length - 1];
+          const lastPathPart = pathParts[pathParts.length - 1].toLowerCase();
           
-          if (lastPathPart && (lastPathPart.includes('sitemap') || lastPathPart.endsWith('.xml'))) {
+          if (lastPathPart && (
+              lastPathPart.includes('sitemap') || 
+              lastPathPart.endsWith('.xml') || 
+              lastPathPart.endsWith('.xml.gz'))) {
             console.log(`URL path ${parsedUrl.pathname} indicates sitemap, treating as sitemap index`);
             return true;
           }
@@ -208,50 +287,85 @@ export function isSitemapIndex(xmlDoc: any, xmlText: string, foundUrls: string[]
 export async function processSitemapUrl(url: string): Promise<SitemapProcessingResult> {
   // Fetch the sitemap content
   console.log(`Fetching sitemap: ${url}`);
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; getlllmstxt/1.0; +https://getlllmstxt.com/bot)',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-    }
-  });
   
-  if (!response.ok) {
-    console.error(`Failed to fetch sitemap: ${url}, status: ${response.status}`);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; getlllmstxt/1.0; +https://getlllmstxt.com/bot)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    
+    if (!response.ok) {
+      console.error(`Failed to fetch sitemap: ${url}, status: ${response.status}`);
+      return { urls: [], isSitemapIndex: false };
+    }
+    
+    // Check if we should use streaming parser based on content length
+    const contentLength = response.headers.get('content-length');
+    const useStreamingParser = contentLength && parseInt(contentLength, 10) > MAX_DOM_PARSE_SIZE;
+    
+    if (useStreamingParser) {
+      console.log(`Large sitemap detected (${contentLength} bytes), using streaming parser`);
+      const xmlText = await response.text();
+      
+      const foundUrls = await extractUrlsWithSaxParser(xmlText);
+      console.log(`SAX parser extracted ${foundUrls.length} URLs from: ${url}`);
+      
+      // Determine if this is a sitemap index
+      const isSitemapIndexFlag = isSitemapIndex(null, xmlText, foundUrls);
+      
+      return {
+        urls: foundUrls,
+        isSitemapIndex: isSitemapIndexFlag
+      };
+    } else {
+      const xmlText = await response.text();
+      let xmlDoc = null;
+      
+      // Try to parse the XML - this may fail for malformed XML
+      try {
+        console.log(`Parsing XML from ${url}`);
+        xmlDoc = parseXML(xmlText);
+      } catch (parseError) {
+        console.error(`XML parsing failed for ${url}: ${parseError.message || 'Unknown parse error'}`);
+        // We'll handle this with SAX or regex fallback
+      }
+      
+      // Track URLs found in this sitemap
+      let foundUrls: string[] = [];
+      let isSitemapIndexFlag = false;
+      
+      // APPROACH 1: If XML parsing succeeded, extract URLs from the document structure
+      if (xmlDoc) {
+        foundUrls = extractUrlsFromXml(xmlDoc);
+        console.log(`Found ${foundUrls.length} URLs in sitemap: ${url}`);
+        isSitemapIndexFlag = isSitemapIndex(xmlDoc, xmlText, foundUrls);
+      }
+      // APPROACH 2: Try SAX parser if DOM parsing failed
+      else {
+        try {
+          console.log(`Using SAX parser for: ${url}`);
+          foundUrls = await extractUrlsWithSaxParser(xmlText);
+          console.log(`SAX parser extracted ${foundUrls.length} URLs from: ${url}`);
+        } catch (saxError) {
+          console.error(`SAX parsing failed for ${url}:`, saxError);
+          // APPROACH 3: Regex fallback if both DOM and SAX parsing failed
+          console.log(`Using regex fallback for: ${url}`);
+          foundUrls = extractUrlsWithRegex(xmlText);
+          console.log(`Regex extracted ${foundUrls.length} URLs from: ${url}`);
+        }
+        
+        isSitemapIndexFlag = isSitemapIndex(null, xmlText, foundUrls);
+      }
+      
+      return {
+        urls: foundUrls,
+        isSitemapIndex: isSitemapIndexFlag
+      };
+    }
+  } catch (error) {
+    console.error(`Error processing sitemap ${url}:`, error);
     return { urls: [], isSitemapIndex: false };
   }
-  
-  const xmlText = await response.text();
-  let xmlDoc = null;
-  
-  // Try to parse the XML - this may fail for malformed XML
-  try {
-    console.log(`Parsing XML from ${url}`);
-    xmlDoc = parseXML(xmlText);
-  } catch (parseError) {
-    console.error(`XML parsing failed for ${url}: ${parseError.message || 'Unknown parse error'}`);
-    // We'll handle this with regex fallback
-  }
-  
-  // Track URLs found in this sitemap
-  let foundUrls: string[] = [];
-  let isSitemapIndexFlag = false;
-  
-  // APPROACH 1: If XML parsing succeeded, extract URLs from the document structure
-  if (xmlDoc) {
-    foundUrls = extractUrlsFromXml(xmlDoc);
-    console.log(`Found ${foundUrls.length} URLs in sitemap: ${url}`);
-    isSitemapIndexFlag = isSitemapIndex(xmlDoc, xmlText, foundUrls);
-  }
-  // APPROACH 2: Regex fallback if XML parsing failed
-  else {
-    console.log(`Using regex fallback for: ${url}`);
-    foundUrls = extractUrlsWithRegex(xmlText);
-    console.log(`Regex extracted ${foundUrls.length} URLs from: ${url}`);
-    isSitemapIndexFlag = isSitemapIndex(null, xmlText, foundUrls);
-  }
-  
-  return {
-    urls: foundUrls,
-    isSitemapIndex: isSitemapIndexFlag
-  };
 }
