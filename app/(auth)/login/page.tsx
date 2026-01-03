@@ -1,5 +1,5 @@
 import { Metadata } from "next"
-import Logo from "@/components/Logo"
+import Logo from "@/components/logo"
 import SignInForm from "@/components/auth/SignInForm"
 
 export const metadata: Metadata = {

@@ -10,7 +10,11 @@ const kronaOne = Krona_One({
   variable: "--font-krona-one",
 })
 
-export default function Logo() {
+interface LogoProps {
+  collapsed?: boolean
+}
+
+export default function Logo({ collapsed = false }: LogoProps) {
   const pathname = usePathname()
   
   // Determine if we're in a dashboard route
@@ -26,8 +30,8 @@ export default function Logo() {
         className="flex items-center cursor-pointer"
       >
         <span className="text-[#E97451]">/</span>
-        <span className="inline-block">getllmstxt</span>
+        {!collapsed && <span className="inline-block">getllmstxt</span>}
       </Link>
     </div>
   )
-} 
+}

@@ -1,6 +1,6 @@
 "use client"
 
-import { AppSidebar } from "@/components/app-sidebar"
+import { AppSidebar } from "@/components/navigation"
 import {
   SidebarInset,
   SidebarProvider,
@@ -12,9 +12,9 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <SidebarProvider defaultOpen={true} className="h-screen overflow-hidden">
-      <AppSidebar variant="floating" />
-      <SidebarInset className="overflow-auto">
+    <SidebarProvider defaultOpen={true}>
+      <AppSidebar />
+      <SidebarInset>
         {children}
       </SidebarInset>
     </SidebarProvider>

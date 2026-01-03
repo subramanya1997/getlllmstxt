@@ -86,31 +86,4 @@ export function patchSupabaseCookieHandling() {
   }, true);
 
   console.log('Supabase cookie handling patches applied');
-}
-
-// Call this to clear all Supabase cookies (useful for troubleshooting)
-export function clearSupabaseCookies() {
-  if (typeof window === 'undefined') return;
-  
-  try {
-    document.cookie.split(';').forEach(function(c) {
-      const cookieName = c.trim().split('=')[0];
-      if (cookieName.startsWith('sb-')) {
-        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-        console.log(`Cleared cookie: ${cookieName}`);
-      }
-    });
-    
-    // Also clear localStorage items
-    Object.keys(localStorage).forEach(key => {
-      if (key.startsWith('sb-')) {
-        localStorage.removeItem(key);
-        console.log(`Cleared localStorage item: ${key}`);
-      }
-    });
-    
-    console.log('All Supabase cookies and storage cleared');
-  } catch (error) {
-    console.error('Error clearing Supabase cookies:', error);
-  }
 } 
