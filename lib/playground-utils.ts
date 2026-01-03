@@ -1,4 +1,4 @@
-import { supabaseClient } from "@/lib/supabase-client";
+import { supabaseClient } from "@/lib/supabase";
 
 // Use the pre-initialized Supabase client
 const supabase = supabaseClient;

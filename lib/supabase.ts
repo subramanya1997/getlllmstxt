@@ -1,80 +1,107 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr"
-import { cookies } from "next/headers"
+import { createBrowserClient } from "@supabase/ssr"
 
-// Custom function to safely handle base64 cookies
-function safeHandleCookieValue(value: string | undefined): string | undefined {
-  if (!value) return value;
-  
-  // If it's a base64 cookie, properly decode it
-  if (value.startsWith('base64-')) {
-    try {
-      // We return the raw value, but ensure it's structured correctly
-      // The actual decoding will be handled by Supabase internally
-      return value;
-    } catch (error) {
-      console.error('Error handling base64 cookie:', error);
-      // Return null to avoid parsing errors
-      return undefined;
-    }
-  }
-  
-  return value;
-}
+// ============================================================================
+// Browser Client (for client components, hooks, etc.)
+// ============================================================================
 
-// Server-side Supabase client - only use in Server Components or API routes
-export async function createClient() {
-  return createServerClient(
+// Create a browser client for client-side usage
+function createCustomSupabaseClient() {
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        async get(name: string) {
-          try {
-            const cookieStore = await cookies()
-            const value = cookieStore.get(name)?.value
-            return safeHandleCookieValue(value)
-          } catch (error) {
-            console.error(`Error getting cookie ${name}:`, error)
-            return undefined
-          }
-        },
-        async set(name: string, value: string, options: CookieOptions) {
-          try {
-            const cookieStore = await cookies()
-            cookieStore.set(name, value, options)
-          } catch (error) {
-            console.error(`Error setting cookie ${name}:`, error)
-          }
-        },
-        async remove(name: string) {
-          try {
-            const cookieStore = await cookies()
-            cookieStore.delete(name)
-          } catch (error) {
-            console.error(`Error removing cookie ${name}:`, error)
-          }
-        },
-      },
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 }
 
-export async function getUser() {
-  try {
-    const supabase = await createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
+// Client-side Supabase client - safe to use in hooks, components and browser
+export function createClientSideSupabase() {
+  return createCustomSupabaseClient()
+}
 
-    if (error || !user) {
-      throw new Error("Error fetching user")
+// Pre-initialized browser client instance for direct imports
+export const supabaseClient = createClientSideSupabase()
+
+// ============================================================================
+// Cookie Handling Patches (for client-side error suppression)
+// ============================================================================
+
+/**
+ * Utility function to patch Supabase cookie handling issues on the client side
+ * - Fixes "Failed to parse cookie string: SyntaxError: Unexpected token 'b', "base64-eyJ"..." error
+ * - Fixes "Failed to parse cookie string: Error: Unexpected format: String" error
+ * 
+ * Call this function at app initialization (in a useEffect in your root provider)
+ */
+export function patchSupabaseCookieHandling() {
+  if (typeof window === 'undefined') return
+
+  console.log('Applying Supabase cookie handling patches...')
+
+  // Patch 1: Fix base64-prefixed cookie parsing
+  const origJsonParse = JSON.parse
+  JSON.parse = function(text: string, reviver?: (key: string, value: unknown) => unknown) {
+    if (typeof text === 'string' && text.startsWith('base64-')) {
+      try {
+        const base64Value = text.replace('base64-', '')
+        const jsonString = atob(base64Value)
+        return origJsonParse(jsonString, reviver)
+      } catch (e) {
+        console.warn('Base64 decode failed, returning fallback session structure', e)
+        return {
+          access_token: '',
+          refresh_token: '',
+          expires_at: 0,
+          expires_in: 0,
+          provider_token: null,
+          provider_refresh_token: null,
+          user: null
+        }
+      }
     }
+    return origJsonParse(text, reviver)
+  }
 
-    return {
-      name: user.email?.split("@")[0] || "User",
-      email: user.email || "",
-      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${user.email}`,
+  // Patch 2: Protect localStorage.getItem
+  try {
+    const origGetItem = Storage.prototype.getItem
+    Storage.prototype.getItem = function(key: string) {
+      try {
+        return origGetItem.call(this, key)
+      } catch (error) {
+        console.warn(`Storage.getItem error for key ${key}:`, error)
+        return null
+      }
     }
   } catch (error) {
-    console.error("Error in getUser:", error)
-    throw error
+    console.error('Failed to patch Storage.getItem:', error)
   }
-} 
+
+  // Patch 3: Add global error handler for Supabase-related errors
+  window.addEventListener('error', function(event) {
+    const errorMsg = event.message || ''
+    
+    if (
+      errorMsg.includes('Failed to parse cookie string') || 
+      errorMsg.includes('Unexpected token') ||
+      errorMsg.includes('Unexpected format')
+    ) {
+      console.warn('Suppressed Supabase cookie error:', event)
+      
+      if (errorMsg.includes('base64-')) {
+        try {
+          document.cookie.split(';').forEach(function(c) {
+            if (c.trim().startsWith('sb-')) {
+              document.cookie = c.trim().split('=')[0] + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+            }
+          })
+          console.log('Cleared problematic Supabase cookies')
+        } catch (e) {
+          console.error('Failed to clear cookies:', e)
+        }
+      }
+      
+      event.preventDefault()
+    }
+  }, true)
+
+  console.log('Supabase cookie handling patches applied')
+}

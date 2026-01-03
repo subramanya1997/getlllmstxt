@@ -1,8 +1,8 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
 import { Session } from '@supabase/supabase-js'
+import { supabaseClient } from '@/lib/supabase'
 
 type UserContextType = {
   session: Session | null
@@ -17,17 +17,13 @@ const UserContext = createContext<UserContextType>({
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
 
   useEffect(() => {
     const getSession = async () => {
       try {
         const {
           data: { session },
-        } = await supabase.auth.getSession()
+        } = await supabaseClient.auth.getSession()
 
         setSession(session)
       } catch (error) {
@@ -41,14 +37,14 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabaseClient.auth.onAuthStateChange((_event, session) => {
       setSession(session)
     })
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [supabase.auth])
+  }, [])
 
   return (
     <UserContext.Provider value={{ session, isLoading }}>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Sitemap } from "@/lib/playground-types";
-import { supabaseClient } from "@/lib/supabase-client";
+import { supabaseClient } from "@/lib/supabase";
 
 // Use the pre-initialized Supabase client
 const supabase = supabaseClient;
@@ -68,10 +68,8 @@ export function useSitemapUrls() {
       if (error) {
         if (error.message) {
           console.error("Error loading URLs for sitemap:", error.message);
-          toast({
-            title: "Error",
+          toast.error("Error", {
             description: `Could not load URLs for this sitemap: ${error.message}`,
-            variant: "destructive",
           });
         }
         return null;
@@ -80,8 +78,7 @@ export function useSitemapUrls() {
       if (data && data.length > 0) {
         const urls = data.map(item => item.url);
         
-        toast({
-          title: "URLs Loaded",
+        toast.success("URLs Loaded", {
           description: `Loaded ${data.length} URLs from ${sitemapUrl}`,
         });
         
@@ -90,10 +87,8 @@ export function useSitemapUrls() {
           storageStatus: status.toLowerCase() === 'completed' ? "full" as const : "partial" as const
         };
       } else {
-        toast({
-          title: "No URLs Found",
+        toast.error("No URLs Found", {
           description: `No URLs were found for ${sitemapUrl}`,
-          variant: "destructive",
         });
         return null;
       }

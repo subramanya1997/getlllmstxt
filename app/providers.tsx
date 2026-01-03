@@ -2,7 +2,7 @@
 
 import { UserProvider } from "@/lib/user-provider"
 import { useEffect } from "react"
-import { patchSupabaseCookieHandling } from "@/lib/supabase-patch"
+import { patchSupabaseCookieHandling } from "@/lib/supabase"
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   // Apply Supabase cookie handling patches on component mount (client-side only)

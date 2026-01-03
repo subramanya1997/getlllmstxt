@@ -30,8 +30,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { supabaseClient } from "@/lib/supabase-client"
-import { toast } from "@/hooks/use-toast"
+import { supabaseClient } from "@/lib/supabase"
+import { toast } from "sonner"
 
 // Define resource item type
 export interface ResourceItem {
@@ -83,10 +83,8 @@ export function NavUser({
       router.push("/login")
       router.refresh()
     } catch {
-      toast({
-        title: "Error signing out",
+      toast.error("Error signing out", {
         description: "Please try again later",
-        variant: "destructive",
       })
     }
   }

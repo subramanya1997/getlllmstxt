@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { toast } from "@/hooks/use-toast"
+import { toast } from "sonner"
 import { SitemapForm } from "@/components/playground/SitemapForm"
 import { SitemapsTable } from "@/components/playground/SitemapsTable"
 import { UrlsList } from "@/components/playground/UrlsList"
@@ -51,10 +51,8 @@ export default function PlaygroundPage() {
   // Handle form submission
   const handleSubmit = async (sitemapUrl: string) => {
     if (!sitemapUrl) {
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: "Please enter a sitemap URL",
-        variant: "destructive",
       })
       return
     }
@@ -89,14 +87,11 @@ export default function PlaygroundPage() {
       }
       
       if (extractedUrls.length === 0) {
-        toast({
-          title: "No URLs found",
+        toast.error("No URLs found", {
           description: "The sitemap didn't contain any valid URLs",
-          variant: "destructive",
         });
       } else {
-        toast({
-          title: "Success",
+        toast.success("Success", {
           description: `Found ${extractedUrls.length} URLs from the sitemap${
             storedCount > 0 ? ` (${storedCount} stored)` : ''
           }`,
@@ -104,10 +99,8 @@ export default function PlaygroundPage() {
       }
     } catch (error) {
       console.error("Error parsing sitemap:", error);
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: error instanceof Error ? error.message : "Failed to parse sitemap",
-        variant: "destructive",
       });
       setStorageStatus("none");
     } finally {

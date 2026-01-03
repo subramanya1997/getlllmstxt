@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
-import { createBrowserClient } from "@supabase/ssr"
+import { supabaseClient } from "@/lib/supabase"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { toast } from "@/hooks/use-toast"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 const emailFormSchema = z.object({
@@ -33,10 +33,6 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
   const [showVerification, setShowVerification] = useState(false)
   const [email, setEmail] = useState("")
   const router = useRouter()
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
   const emailForm = useForm<z.infer<typeof emailFormSchema>>({
@@ -132,7 +128,7 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
       setIsLoading(true)
       console.log("Requesting OTP...")
       
-      const response = await supabase.auth.signInWithOtp({
+      const response = await supabaseClient.auth.signInWithOtp({
         email: values.email,
         options: {
           shouldCreateUser: true,
@@ -144,26 +140,21 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
 
       if (response.error) {
         console.error("Sign in error:", response.error)
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: response.error.message,
-          variant: "destructive",
         })
         return
       }
 
       setEmail(values.email)
       setShowVerification(true)
-      toast({
-        title: "Code sent",
+      toast.success("Code sent", {
         description: "Check your email for the verification code",
       })
     } catch (error) {
       console.error("Unexpected error:", error)
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: "Something went wrong. Please try again.",
-        variant: "destructive",
       })
     } finally {
       setIsLoading(false)
@@ -176,7 +167,7 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
       console.log("Verifying OTP...")
       
       const token = values.code.join("")
-      const { data, error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabaseClient.auth.verifyOtp({
         email: email,
         token,
         type: 'email'
@@ -186,27 +177,22 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
 
       if (error) {
         console.error("Verification error:", error)
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: error.message,
-          variant: "destructive",
         })
         return
       }
 
       if (!data.session) {
         console.error("No session after verification")
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: "Failed to create session. Please try again.",
-          variant: "destructive",
         })
         return
       }
 
       console.log("Successfully verified and got session")
-      toast({
-        title: "Success",
+      toast.success("Success", {
         description: "You have been signed in successfully",
       })
 
@@ -214,10 +200,8 @@ export default function SignInForm({ className, ...props }: React.HTMLAttributes
       router.refresh()
     } catch (error) {
       console.error("Unexpected error:", error)
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: "Something went wrong. Please try again.",
-        variant: "destructive",
       })
     } finally {
       setIsLoading(false)

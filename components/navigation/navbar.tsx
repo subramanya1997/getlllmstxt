@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import Logo from "@/components/logo"
 import { useEffect, useState } from "react"
-import { toast } from "@/hooks/use-toast"
-import { supabaseClient } from "@/lib/supabase-client"
+import { toast } from "sonner"
+import { supabaseClient } from "@/lib/supabase"
 
 export default function Navbar() {
   const [isLoading, setIsLoading] = useState(false)
@@ -37,20 +37,16 @@ export default function Navbar() {
       setIsLoading(true)
       const { error } = await supabase.auth.signOut()
       if (error) {
-        toast({
-          title: "Error",
+        toast.error("Error", {
           description: error.message,
-          variant: "destructive",
         })
         return
       }
       router.push("/login")
     } catch (error) {
       console.error("Error signing out:", error)
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: "Something went wrong. Please try again.",
-        variant: "destructive",
       })
     } finally {
       setIsLoading(false)
